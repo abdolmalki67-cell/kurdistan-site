@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="fa">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>پنل مدیریت — بوم‌گردی کردستان</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    body{font-family:Tahoma,Arial;background:#f7f6f2;padding:20px;direction:rtl}
+    .box{max-width:1000px;margin:auto;background:#fff;padding:16px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
+    input, select, textarea {width:100%;padding:8px;margin:6px 0;box-sizing:border-box}
+    .row{display:flex;gap:8px}
+    .col{flex:1}
+    button{background:#c49a3f;color:white;padding:8px 12px;border:none;border-radius:6px;cursor:pointer}
+    .small{padding:6px 10px}
+    ul{padding:0}
+    li{list-style:none;margin-bottom:10px;padding:10px;border-radius:6px;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,0.04);display:flex;gap:12px;align-items:center}
+    img.thumb{width:120px;height:80px;object-fit:cover;border-radius:6px;background:#eee}
+    #map{height:320px;margin:6px 0;border-radius:6px}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+  <div class="box" id="loginBox">
+    <h2>ورود — پنل مدیریت</h2>
+    <p>رمز ۴ رقمی را وارد کنید:</p>
+    <input id="pin" placeholder="رمز 4 رقمی" maxlength="4"/>
+    <div><button id="btnLogin">ورود</button></div>
+    <p style="color:#666;margin-top:8px">رمز را از مدیر دریافت کنید.</p>
+  </div>
+
+  <div class="box hidden" id="panelBox">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2>پنل مدیریت (شما وارد شدید)</h2>
+      <div><button id="btnExport" class="small">صدور JSON</button> <button id="btnImport" class="small">بارگذاری JSON</button> <button id="btnLogout" class="small">خروج</button></div>
+    </div>
+
+    <h3>افزودن / ویرایش جاذبه</h3>
+    <div id="form">
+      <input id="name" placeholder="نام"/>
+      <select id="type"><option value="mineral">معدن</option><option value="natural">طبیعی</option><option value="cultural">فرهنگی</option><option value="village">روستا</option></select>
+      <input id="province" placeholder="استان (مثال: کردستان)"/>
+      <textarea id="short_description" placeholder="شرح کوتاه"></textarea>
+      <div class="row">
+        <input id="lat" placeholder="lat"/>
+        <input id="lng" placeholder="lng"/>
+      </div>
+      <div><button id="btnPick">انتخاب روی نقشه</button></div>
+      <div style="margin-top:8px">
+        <input type="file" id="file" accept="image/*"/>
+        <input id="imageUrl" placeholder="یا لینک عکس (اختیاری)"/>
+      </div>
+      <div style="margin-top:8px"><button id="btnAdd">افزودن</button> <button id="btnUpdate" class="hidden">بروزرسانی</button> <button id="btnCancel" class="hidden">لغو</button></div>
+    </div>
+
+    <h3>جاذبه‌ها</h3>
+    <ul id="list"></ul>
+    <div style="margin-top:10px;color:#666">نکته: بعد از ویرایش روی «صدور JSON» کلیک کنید و فایل generated places.json را دانلود کنید. سپس آن فایل را در پوشه <code>/data/places.json</code> روی Netlify یا هر هاست استاتیک آپلود کنید تا اپ موبایل و صفحه نمایش به‌روز شوند.</div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const ADMIN_PIN = "5099"; // your PIN
+    const loginBox = document.getElementById('loginBox');
+    const panelBox = document.getElementById('panelBox');
+    const pinInput = document.getElementById('pin');
+    const btnLogin = document.getElementById('btnLogin');
+    const btnLogout = document.getElementById('btnLogout');
+    const listEl = document.getElementById('list');
+    const nameEl = document.getElementById('name');
+    const typeEl = document.getElementById('type');
+    const provinceEl = document.getElementById('province');
+    const shortEl = document.getElementById('short_description');
+    const latEl = document.getElementById('lat');
+    const lngEl = document.getElementById('lng');
+    const fileEl = document.getElementById('file');
+    const imageUrlEl = document.getElementById('imageUrl');
+    const btnAdd = document.getElementById('btnAdd');
+    const btnUpdate = document.getElementById('btnUpdate');
+    const btnCancel = document.getElementById('btnCancel');
+    const btnPick = document.getElementById('btnPick');
+    const btnExport = document.getElementById('btnExport');
+    const btnImport = document.getElementById('btnImport');
+
+    let editingId = null;
+    let data = [];
+
+    function loadData() {
+      const raw = localStorage.getItem('places_data_v1');
+      if(raw) {
+        try { data = JSON.parse(raw); } catch(e){ data=[]; }
+      } else {
+        fetch('/data/places.json').then(r=>{ if(r.ok) return r.json(); throw new Error('no'); }).then(j=>{ data=j; saveLocal(); renderList(); }).catch(()=>{ data = []; saveLocal(); renderList(); });
+      }
+      renderList();
+    }
+
+    function saveLocal() {
+      localStorage.setItem('places_data_v1', JSON.stringify(data));
+    }
+
+    function renderList() {
+      listEl.innerHTML='';
+      data.forEach((it, idx)=>{
+        const li = document.createElement('li');
+        li.innerHTML = '<img class="thumb" src="'+(it.image || '')+'"/>' +
+                       '<div style="flex:1"><strong>'+it.name+'</strong><div style="color:#666">'+(it.type||'')+' — '+(it.province||'')+'</div><div style="margin-top:6px">'+(it.short_description||'')+'</div></div>' +
+                       '<div style="display:flex;flex-direction:column;gap:6px"><button data-idx="'+idx+'" class="editBtn">ویرایش</button><button data-idx="'+idx+'" class="delBtn">حذف</button></div>';
+        listEl.appendChild(li);
+      });
+      Array.from(document.getElementsByClassName('editBtn')).forEach(b=>b.onclick = ()=>{ const i = parseInt(b.dataset.idx); startEdit(i); });
+      Array.from(document.getElementsByClassName('delBtn')).forEach(b=>b.onclick = ()=>{ const i = parseInt(b.dataset.idx); if(confirm('حذف شود؟')){ data.splice(i,1); saveLocal(); renderList(); }});
+    }
+
+    btnLogin.onclick = ()=>{ if(pinInput.value === ADMIN_PIN) { loginBox.classList.add('hidden'); panelBox.classList.remove('hidden'); loadData(); } else alert('رمز اشتباه است'); };
+    btnLogout.onclick = ()=>{ panelBox.classList.add('hidden'); loginBox.classList.remove('hidden'); pinInput.value=''; };
+
+    btnAdd.onclick = async ()=>{ const obj = await buildObjectFromForm(); data.unshift(obj); saveLocal(); renderList(); clearForm(); alert('افزوده شد — برای منتشر شدن روی سایت، روی \"صدور JSON\" کلیک و فایل را آپلود کنید.'); };
+    btnUpdate.onclick = async ()=>{ if(editingId===null) return; const obj = await buildObjectFromForm(); data[editingId] = obj; saveLocal(); renderList(); clearForm(); btnUpdate.classList.add('hidden'); btnCancel.classList.add('hidden'); btnAdd.classList.remove('hidden'); editingId = null; alert('بروزرسانی شد'); };
+    btnCancel.onclick = ()=>{ clearForm(); btnUpdate.classList.add('hidden'); btnCancel.classList.add('hidden'); btnAdd.classList.remove('hidden'); editingId=null; };
+
+    async function buildObjectFromForm() {
+      let imageData = imageUrlEl.value.trim();
+      if(fileEl.files && fileEl.files[0]) {
+        const f = fileEl.files[0];
+        imageData = await toBase64(f);
+      }
+      return {
+        id: Date.now() + '_' + Math.floor(Math.random()*1000),
+        name: nameEl.value.trim(),
+        type: typeEl.value,
+        province: provinceEl.value.trim(),
+        short_description: shortEl.value.trim(),
+        coordinates: { lat: parseFloat(latEl.value) || 0, lng: parseFloat(lngEl.value) || 0 },
+        image: imageData
+      };
+    }
+    function toBase64(file){ return new Promise((res,rej)=>{ const reader=new FileReader(); reader.onload=()=>res(reader.result); reader.onerror=err=>rej(err); reader.readAsDataURL(file); }); }
+    function clearForm(){ nameEl.value=''; shortEl.value=''; latEl.value=''; lngEl.value=''; fileEl.value=''; imageUrlEl.value=''; provinceEl.value=''; }
+    function startEdit(i){ const it = data[i]; editingId = i; nameEl.value=it.name; typeEl.value=it.type||'mineral'; provinceEl.value=it.province||'کردستان'; shortEl.value=it.short_description||''; latEl.value=it.coordinates?.lat||''; lngEl.value=it.coordinates?.lng||''; imageUrlEl.value = it.image||''; btnAdd.classList.add('hidden'); btnUpdate.classList.remove('hidden'); btnCancel.classList.remove('hidden'); window.scrollTo(0,0); }
+
+    btnPick.onclick = ()=>{ const w = window.open('','map','width=800,height=600'); const html = `<html><head><link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/><style>html,body,#map{height:100%;margin:0;padding:0}</style></head><body><div id="map"></div><script src="https://unpkg.com/leaflet/dist/leaflet.js"></script><script>const map=L.map('map').setView([35.3,46.3],9);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);let marker;map.on('click',e=>{ if(marker) map.removeLayer(marker); marker=L.marker(e.latlng).addTo(map); window.selected=e.latlng; }); const btn=document.createElement('button'); btn.textContent='انتخاب و بستن'; btn.style.position='absolute'; btn.style.top='8px'; btn.onclick=()=>{ if(window.selected) window.opener.postMessage({lat:window.selected.lat,lng:window.selected.lng},'*'); window.close(); }; document.body.appendChild(btn);</script></body></html>`; w.document.write(html); };
+    window.addEventListener('message', function(e){ if(e.data && e.data.lat){ latEl.value = e.data.lat; lngEl.value = e.data.lng; } });
+
+    btnExport.onclick = ()=>{ const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'}); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'places.json'; a.click(); };
+    btnImport.onclick = ()=>{ const inp = document.createElement('input'); inp.type='file'; inp.accept='application/json'; inp.onchange = ()=>{ const f = inp.files[0]; const reader = new FileReader(); reader.onload = ()=>{ try{ const j = JSON.parse(reader.result); data = j; saveLocal(); renderList(); alert('بارگزاری JSON انجام شد'); }catch(e){ alert('فایل JSON نامعتبر است'); } }; reader.readAsText(f); }; inp.click(); };
+
+    loadData();
+  </script>
+</body>
+</html>
