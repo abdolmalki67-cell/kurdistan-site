@@ -8,15 +8,13 @@
     "coordinates": { "lat": 35.1977, "lng": 46.8428 },
     "image": ""
   },
-
   {
-  "id": "mine_002",
-  "name": "معدن طلای قلاتوق",
-  "type": "mineral",
-  "province": "کردستان",
-  "short_description": "معدن طلای با ارزش نزدیک دهگلان",
-  "coordinates": { "lat": 35.24, "lng": 47.01 },
-  "image": ""
-}
-
+    "id": "mine_002",
+    "name": "معدن طلای قلاتوق",
+    "type": "mineral",
+    "province": "کردستان",
+    "short_description": "معدن طلای با ارزش نزدیک دهگلان",
+    "coordinates": { "lat": 35.24, "lng": 47.01 },
+    "image": ""
+  }
 ]
