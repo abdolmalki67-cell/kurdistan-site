@@ -1,0 +1,11 @@
+[
+  {
+    "id": "sarigol_001",
+    "name": "معدن طلای ساریگونی",
+    "type": "mineral",
+    "province": "کردستان",
+    "short_description": "معدن طلای دیدنی در شهرستان قروه",
+    "coordinates": { "lat": 35.1977, "lng": 46.8428 },
+    "image": ""
+  }
+]
