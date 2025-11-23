@@ -4,44 +4,111 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>بوم‌گردی معدنی کردستان — نمایش جاذبه‌ها</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <style>
     body{font-family:Tahoma,Arial;background:#f7f6f2;padding:20px;direction:rtl}
-    .card{background:white;padding:12px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.06);margin-bottom:12px}
-    img{max-width:220px;display:block;margin-bottom:8px;border-radius:6px}
+    h1{text-align:center;margin-bottom:20px}
+    .filters{display:flex;gap:10px;justify-content:center;margin-bottom:15px;flex-wrap:wrap}
+    select{padding:6px 10px;border-radius:6px;border:1px solid #ccc}
+    #map{height:400px;margin-bottom:20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.1)}
+    .card{background:white;padding:12px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.06);margin-bottom:12px;max-width:600px;margin-left:auto;margin-right:auto}
+    img{max-width:100%;display:block;margin-bottom:8px;border-radius:6px;object-fit:cover;height:200px}
+    .container{text-align:right}
   </style>
 </head>
 <body>
   <h1>بوم‌گردی معدنی کردستان</h1>
+
+  <div class="filters">
+    <select id="filterType">
+      <option value="">همه انواع</option>
+      <option value="mineral">معدن</option>
+      <option value="natural">طبیعی</option>
+      <option value="cultural">فرهنگی</option>
+      <option value="village">روستا</option>
+    </select>
+    <select id="filterProvince">
+      <option value="">همه استان‌ها</option>
+      <option value="کردستان">کردستان</option>
+    </select>
+  </div>
+
+  <div id="map"></div>
   <div id="list">در حال بارگذاری...</div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    async function load() {
+    const defaultImage = 'images/default.jpg'; // عکس پیش‌فرض
+    const filterTypeEl = document.getElementById('filterType');
+    const filterProvinceEl = document.getElementById('filterProvince');
+    const container = document.getElementById('list');
+    let map, markers = [];
+
+    async function loadData() {
       try {
-        /*  ← ← ← اصلاح همین خط  */
         const res = await fetch('./data/places.json');
         if(!res.ok) throw new Error('data not found');
-        const data = await res.json();
-        const container = document.getElementById('list');
-        container.innerHTML = '';
+        let data = await res.json();
 
-        data.forEach(item=>{
-          const div = document.createElement('div');
-          div.className='card';
-          div.innerHTML =
-            '<h3>'+item.name+'</h3>' +
-            (item.image ? ('<img src="'+item.image+'" alt="عکس جاذبه">') : '') +
-            '<div><strong>نوع:</strong> '+item.type+' — <strong>استان:</strong> '+(item.province||'')+'</div>' +
-            '<p>'+ (item.short_description||'') +'</p>' +
-            (item.coordinates ? ('<div>مختصات: '+item.coordinates.lat+', '+item.coordinates.lng+'</div>') : '');
+        filterTypeEl.onchange = filterProvinceEl.onchange = ()=> render(data);
 
-          container.appendChild(div);
-        });
-
+        render(data);
       } catch(e) {
-        document.getElementById('list').innerText =
-          'خطا در بارگذاری داده‌ها. فایل data/places.json را آپلود کنید.';
+        container.innerText = 'خطا در بارگذاری داده‌ها. فایل data/places.json را آپلود کنید.';
       }
     }
-    load();
+
+    function render(data){
+      const typeFilter = filterTypeEl.value;
+      const provinceFilter = filterProvinceEl.value;
+      container.innerHTML = '';
+
+      const filtered = data
+        .filter(item => (!typeFilter || item.type === typeFilter))
+        .filter(item => (!provinceFilter || item.province === provinceFilter));
+
+      filtered.forEach(item=>{
+        const imgSrc = item.image || defaultImage;
+        const div = document.createElement('div');
+        div.className='card container';
+        div.innerHTML =
+          '<h3>'+item.name+'</h3>' +
+          '<img src="'+imgSrc+'" alt="عکس جاذبه">' +
+          '<div><strong>نوع:</strong> '+item.type+' — <strong>استان:</strong> '+(item.province||'')+'</div>' +
+          '<p>'+ (item.short_description||'') +'</p>' +
+          (item.coordinates ? ('<div>مختصات: '+item.coordinates.lat+', '+item.coordinates.lng+'</div>') : '');
+        container.appendChild(div);
+      });
+
+      updateMap(filtered);
+    }
+
+    function updateMap(data){
+      if(!map){
+        map = L.map('map').setView([35.2,46.9],9);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+      }
+
+      markers.forEach(m=>map.removeLayer(m));
+      markers = [];
+
+      data.forEach(item=>{
+        if(item.coordinates){
+          const marker = L.marker([item.coordinates.lat, item.coordinates.lng]).addTo(map);
+          marker.bindPopup('<b>'+item.name+'</b><br>'+item.short_description);
+          markers.push(marker);
+        }
+      });
+
+      if(markers.length>0){
+        const group = new L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.2));
+      }
+    }
+
+    loadData();
   </script>
 </body>
 </html>
